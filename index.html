@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hong Kong MTR Next Train Tracker</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            mtr: {
+              ktl: '#00AF41',
+              isl: '#0072CE',
+              twl: '#E60012',
+              sil: '#B5BD00',
+              tcl: '#F38B00',
+              ael: '#008080',
+              tkl: '#A35EB5',
+              eal: '#53B7E8',
+              tml: '#9A3820',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    .line-active-glow {
+      box-shadow: 0 0 20px -3px var(--line-theme-color, #0072CE);
+    }
+    
+    .line-border-active {
+      border-color: var(--line-theme-color, #0072CE);
+    }
+
+    .line-bg-active {
+      background-color: var(--line-theme-color, #0072CE);
+    }
+
+    .line-text-active {
+      color: var(--line-theme-color, #0072CE);
+    }
+
+    /* Pulse animation for arriving train */
+    @keyframes pulse-fast {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.85; transform: scale(1.02); }
+    }
+    .arriving-pulse {
+      animation: pulse-fast 1.2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="h-full font-sans antialiased bg-slate-950 text-slate-100 flex flex-col selection:bg-slate-700 selection:text-white">
+
+  <!-- TOP HEADER & BRAND BAR -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
+    <div id="theme-top-bar" class="h-1.5 w-full bg-blue-600 transition-colors duration-500"></div>
+    <div class="max-w-6xl mx-auto px-4 py-3 sm:px-6 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <!-- MTR Inspired Logo Icon -->
+        <div class="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-white shadow-inner">
+          <i class="fa-solid font-bold text-xl text-rose-500 fa-train-subway"></i>
+        </div>
+        <div>
+          <h1 class="font-extrabold text-lg sm:text-xl tracking-tight text-white flex items-center gap-2">
+            MTR <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium border border-slate-700">Hong Kong</span>
+          </h1>
+          <p class="text-xs text-slate-400">Real-Time Next Train Departure System</p>
+        </div>
+      </div>
+
+      <!-- Quick Action Controls -->
+      <div class="flex items-center space-x-3">
+        <button id="toggle-mock-btn" title="Toggle Simulation Mode" class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold text-slate-300 flex items-center gap-2 transition">
+          <span id="mock-indicator" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span id="mock-text" class="hidden sm:inline">Live API</span>
+        </button>
+        <button id="manual-refresh-btn" class="p-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white transition flex items-center justify-center">
+          <i id="refresh-icon" class="fa-solid fa-rotate text-sm"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 sm:px-6 flex flex-col gap-6">
+
+    <!-- SELECTION CONTROL PANEL WITH SEARCHABLE DROPDOWNS -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl relative overflow-hidden">
+      <!-- Background Ambient Glow -->
+      <div id="ambient-glow" class="absolute -top-24 -left-24 w-72 h-72 bg-blue-600/10 rounded-full blur-3xl pointer-events-none transition-colors duration-700"></div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+        
+        <!-- Searchable Line Combobox -->
+        <div class="relative" id="line-combobox-wrapper">
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+            <i class="fa-solid fa-route mr-1 text-slate-500"></i> Select MTR Railway Line
+          </label>
+          <div class="relative">
+            <div id="line-trigger" class="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 text-white font-medium rounded-xl px-4 py-3 cursor-pointer flex items-center justify-between transition shadow-inner">
+              <span id="line-trigger-label" class="flex items-center gap-2.5 truncate">
+                <!-- Selected Line Content -->
+              </span>
+              <i class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform duration-200" id="line-arrow"></i>
+            </div>
+            
+            <!-- Line Search Dropdown Menu -->
+            <div id="line-dropdown-menu" class="hidden absolute top-full left-0 w-full mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div class="p-2 border-b border-slate-800 bg-slate-950/60 sticky top-0">
+                <div class="relative">
+                  <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                  <input type="text" id="line-search-input" placeholder="Search line (e.g. Island, TWL)..." autocomplete="off"
+                    class="w-full bg-slate-900 text-slate-100 text-xs rounded-lg pl-8 pr-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500">
+                </div>
+              </div>
+              <ul id="line-options-list" class="max-h-60 overflow-y-auto p-1.5 space-y-1">
+                <!-- Options populated dynamically -->
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Searchable Station Combobox -->
+        <div class="relative" id="station-combobox-wrapper">
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+            <i class="fa-solid fa-location-dot mr-1 text-slate-500"></i> Select Station
+          </label>
+          <div class="relative">
+            <div id="station-trigger" class="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 text-white font-medium rounded-xl px-4 py-3 cursor-pointer flex items-center justify-between transition shadow-inner">
+              <span id="station-trigger-label" class="truncate text-slate-300">
+                <!-- Selected Station Content -->
+              </span>
+              <i class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform duration-200" id="station-arrow"></i>
+            </div>
+
+            <!-- Station Search Dropdown Menu -->
+            <div id="station-dropdown-menu" class="hidden absolute top-full left-0 w-full mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div class="p-2 border-b border-slate-800 bg-slate-950/60 sticky top-0">
+                <div class="relative">
+                  <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                  <input type="text" id="station-search-input" placeholder="Search station (e.g. Central, CEN)..." autocomplete="off"
+                    class="w-full bg-slate-900 text-slate-100 text-xs rounded-lg pl-8 pr-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500">
+                </div>
+              </div>
+              <ul id="station-options-list" class="max-h-60 overflow-y-auto p-1.5 space-y-1">
+                <!-- Options populated dynamically -->
+              </ul>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Quick Line Pills -->
+      <div class="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center gap-2" id="line-pills-container">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- STATUS & TIMER BAR -->
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/50 border border-slate-800/60 rounded-xl px-4 py-3 text-xs text-slate-400">
+      <div class="flex items-center space-x-3 w-full sm:w-auto">
+        <div id="status-badge" class="flex items-center space-x-2 bg-emerald-950/60 border border-emerald-800/60 text-emerald-400 px-2.5 py-1 rounded-full">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="status-text" class="font-semibold">Ready</span>
+        </div>
+        <span id="last-updated-text" class="text-slate-400">Last updated: --:--:--</span>
+      </div>
+
+      <!-- Auto refresh progress bar -->
+      <div class="flex items-center space-x-3 w-full sm:w-auto justify-end">
+        <span class="text-slate-400 whitespace-nowrap">Auto refresh in <strong id="timer-counter" class="text-white font-mono text-sm">30</strong>s</span>
+        <div class="w-28 bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700">
+          <div id="timer-progress" class="bg-blue-500 h-full w-full transition-all duration-1000 ease-linear"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN DEPARTURE BOARDS GRID -->
+    <div id="departure-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- UP & DOWN Cards inserted dynamically -->
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="mt-auto border-t border-slate-800 bg-slate-950 py-4 text-center text-xs text-slate-400">
+    <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <p>Data Source: MTR Corporation Limited Open Data API</p>
+      <p class="text-slate-400">Updated for full MTR Network Coverage</p>
+    </div>
+  </footer>
+
+  <!-- JAVASCRIPT APP LOGIC -->
+  <script>
+    /**
+     * MTR DATA DICTIONARIES & CONFIGURATION
+     */
+    const MTR_LINES = {
+      KTL: {
+        code: 'KTL',
+        name: 'Kwun Tong Line',
+        color: '#00AF41',
+        bgTailwind: 'bg-emerald-600',
+        textColor: 'text-emerald-400',
+        borderColor: 'border-emerald-500',
+        stations: [
+          { code: 'WHA', name: 'Whampoa' },
+          { code: 'HOM', name: 'Ho Man Tin' },
+          { code: 'YMT', name: 'Yau Ma Tei' },
+          { code: 'MOK', name: 'Mong Kok' },
+          { code: 'PRE', name: 'Prince Edward' },
+          { code: 'SKM', name: 'Shek Kip Mei' },
+          { code: 'KOF', name: 'Kowloon Tong' },
+          { code: 'LOF', name: 'Lok Fu' },
+          { code: 'WTS', name: 'Wong Tai Sin' },
+          { code: 'DIH', name: 'Diamond Hill' },
+          { code: 'KOB', name: 'Kowloon Bay' },
+          { code: 'NTK', name: 'Ngau Tau Kok' },
+          { code: 'KWT', name: 'Kwun Tong' },
+          { code: 'LAT', name: 'Lam Tin' },
+          { code: 'YAT', name: 'Yau Tong' },
+          { code: 'TIK', name: 'Tiu Keng Leng' }
+        ]
+      },
+      ISL: {
+        code: 'ISL',
+        name: 'Island Line',
+        color: '#0072CE',
+        bgTailwind: 'bg-blue-600',
+        textColor: 'text-blue-400',
+        borderColor: 'border-blue-500',
+        stations: [
+          { code: 'KET', name: 'Kennedy Town' },
+          { code: 'HKU', name: 'HKU' },
+          { code: 'SYP', name: 'Sai Ying Pun' },
+          { code: 'SHW', name: 'Sheung Wan' },
+          { code: 'CEN', name: 'Central' },
+          { code: 'ADM', name: 'Admiralty' },
+          { code: 'WCH', name: 'Wan Chai' },
+          { code: 'CWB', name: 'Causeway Bay' },
+          { code: 'TIH', name: 'Tin Hau' },
+          { code: 'FOH', name: 'Fortress Hill' },
+          { code: 'NOP', name: 'North Point' },
+          { code: 'QUB', name: 'Quarry Bay' },
+          { code: 'TKO', name: 'Tai Koo' },
+          { code: 'SWH', name: 'Sai Wan Ho' },
+          { code: 'SKW', name: 'Shau Kei Wan' },
+          { code: 'HEC', name: 'Heng Fa Chuen' },
+          { code: 'CHW', name: 'Chai Wan' }
+        ]
+      },
+      TWL: {
+        code: 'TWL',
+        name: 'Tsuen Wan Line',
+        color: '#E60012',
+        bgTailwind: 'bg-rose-600',
+        textColor: 'text-rose-400',
+        borderColor: 'border-rose-500',
+        stations: [
+          { code: 'CEN', name: 'Central' },
+          { code: 'ADM', name: 'Admiralty' },
+          { code: 'TST', name: 'Tsim Sha Tsui' },
+          { code: 'JOR', name: 'Jordan' },
+          { code: 'YMT', name: 'Yau Ma Tei' },
+          { code: 'MOK', name: 'Mong Kok' },
+          { code: 'PRE', name: 'Prince Edward' },
+          { code: 'SSP', name: 'Sham Shui Po' },
+          { code: 'CSW', name: 'Cheung Sha Wan' },
+          { code: 'LCK', name: 'Lai Chi Kok' },
+          { code: 'MEF', name: 'Mei Foo' },
+          { code: 'KWF', name: 'Kwai Fong' },
+          { code: 'KWH', name: 'Kwai Hing' },
+          { code: 'TWO', name: 'Tai Wo Hau' },
+          { code: 'TSW', name: 'Tsuen Wan' }
+        ]
+      },
+      SIL: {
+        code: 'SIL',
+        name: 'South Island Line',
+        color: '#B5BD00',
+        bgTailwind: 'bg-lime-500',
+        textColor: 'text-lime-400',
+        borderColor: 'border-lime-500',
+        stations: [
+          { code: 'ADM', name: 'Admiralty' },
+          { code: 'OCP', name: 'Ocean Park' },
+          { code: 'WCH', name: 'Wong Chuk Hang' },
+          { code: 'LET', name: 'Lei Tung' },
+          { code: 'SOH', name: 'South Horizons' }
+        ]
+      },
+      TCL: {
+        code: 'TCL',
+        name: 'Tung Chung Line',
+        color: '#F38B00',
+        bgTailwind: 'bg-amber-500',
+        textColor: 'text-amber-400',
+        borderColor: 'border-amber-500',
+        stations: [
+          { code: 'HOK', name: 'Hong Kong' },
+          { code: 'KOW', name: 'Kowloon' },
+          { code: 'OLY', name: 'Olympic' },
+          { code: 'NAC', name: 'Nam Cheong' },
+          { code: 'LAK', name: 'Lai King' },
+          { code: 'TSY', name: 'Tsing Yi' },
+          { code: 'SUN', name: 'Sunny Bay' },
+          { code: 'TCG', name: 'Tung Chung' }
+        ]
+      },
+      AEL: {
+        code: 'AEL',
+        name: 'Airport Express',
+        color: '#008080',
+        bgTailwind: 'bg-teal-600',
+        textColor: 'text-teal-400',
+        borderColor: 'border-teal-500',
+        stations: [
+          { code: 'HOK', name: 'Hong Kong' },
+          { code: 'KOW', name: 'Kowloon' },
+          { code: 'TSY', name: 'Tsing Yi' },
+          { code: 'AIR', name: 'Airport' },
+          { code: 'AWE', name: 'AsiaWorld-Expo' }
+        ]
+      },
+      TKL: {
+        code: 'TKL',
+        name: 'Tseung Kwan O Line',
+        color: '#A35EB5',
+        bgTailwind: 'bg-purple-600',
+        textColor: 'text-purple-400',
+        borderColor: 'border-purple-500',
+        stations: [
+          { code: 'NOP', name: 'North Point' },
+          { code: 'QUB', name: 'Quarry Bay' },
+          { code: 'YAT', name: 'Yau Tong' },
+          { code: 'TIK', name: 'Tiu Keng Leng' },
+          { code: 'TKO', name: 'Tseung Kwan O' },
+          { code: 'LHO', name: 'LOHAS Park' },
+          { code: 'HAH', name: 'Hang Hau' },
+          { code: 'POA', name: 'Po Lam' }
+        ]
+      },
+      EAL: {
+        code: 'EAL',
+        name: 'East Rail Line',
+        color: '#53B7E8',
+        bgTailwind: 'bg-sky-400',
+        textColor: 'text-sky-300',
+        borderColor: 'border-sky-400',
+        stations: [
+          { code: 'ADM', name: 'Admiralty' },
+          { code: 'EXH', name: 'Exhibition Centre' },
+          { code: 'MOK', name: 'Mong Kok East' },
+          { code: 'KOF', name: 'Kowloon Tong' },
+          { code: 'TAW', name: 'Tai Wai' },
+          { code: 'SHT', name: 'Sha Tin' },
+          { code: 'FOT', name: 'Fo Tan' },
+          { code: 'RAC', name: 'Racecourse' },
+          { code: 'TAP', name: 'Tai Po Market' },
+          { code: 'TWO', name: 'Tai Wo' },
+          { code: 'FAN', name: 'Fanling' },
+          { code: 'SHS', name: 'Sheung Shui' },
+          { code: 'LOW', name: 'Lo Wu' },
+          { code: 'LMK', name: 'Lok Ma Chau' }
+        ]
+      },
+      TML: {
+        code: 'TML',
+        name: 'Tuen Ma Line',
+        color: '#9A3820',
+        bgTailwind: 'bg-amber-800',
+        textColor: 'text-amber-500',
+        borderColor: 'border-amber-700',
+        stations: [
+          { code: 'TUM', name: 'Tuen Mun' },
+          { code: 'SIH', name: 'Siu Hong' },
+          { code: 'TSU', name: 'Tin Shui Wai' },
+          { code: 'LOP', name: 'Long Ping' },
+          { code: 'YUL', name: 'Yuen Long' },
+          { code: 'KSR', name: 'Kam Sheung Road' },
+          { code: 'TWW', name: 'Tsuen Wan West' },
+          { code: 'MEF', name: 'Mei Foo' },
+          { code: 'NAC', name: 'Nam Cheong' },
+          { code: 'AUS', name: 'Austin' },
+          { code: 'ETS', name: 'East Tsim Sha Tsui' },
+          { code: 'HOM', name: 'Ho Man Tin' },
+          { code: 'TKW', name: 'To Kwa Wan' },
+          { code: 'SUW', name: 'Sung Wong Toi' },
+          { code: 'KAT', name: 'Kai Tak' },
+          { code: 'DIH', name: 'Diamond Hill' },
+          { code: 'HIK', name: 'Hin Keng' },
+          { code: 'TAW', name: 'Tai Wai' },
+          { code: 'CKT', name: 'Che Kung Temple' },
+          { code: 'STW', name: 'Sha Tin Wai' },
+          { code: 'CIO', name: 'City One' },
+          { code: 'SHM', name: 'Shek Mun' },
+          { code: 'WKS', name: 'Wu Kai Sha' }
+        ]
+      }
+    };
+
+    // Dictionary for looking up Station Names quickly from Station Code across any line
+    const STATION_NAME_MAP = {};
+    Object.values(MTR_LINES).forEach(line => {
+      line.stations.forEach(sta => {
+        STATION_NAME_MAP[sta.code] = sta.name;
+      });
+    });
+
+    /**
+     * STATE MANAGEMENT
+     */
+    let currentLine = 'TWL';
+    let currentStation = 'CEN';
+    let countdownSecs = 30;
+    let timerInterval = null;
+    let isMockMode = false;
+
+    /**
+     * DOM ELEMENTS & COMBOBOX CONTROLS
+     */
+    const linePillsContainer = document.getElementById('line-pills-container');
+    const themeTopBar = document.getElementById('theme-top-bar');
+    const ambientGlow = document.getElementById('ambient-glow');
+    const departureContainer = document.getElementById('departure-container');
+    const statusText = document.getElementById('status-text');
+    const statusBadge = document.getElementById('status-badge');
+    const lastUpdatedText = document.getElementById('last-updated-text');
+    const timerCounter = document.getElementById('timer-counter');
+    const timerProgress = document.getElementById('timer-progress');
+    const manualRefreshBtn = document.getElementById('manual-refresh-btn');
+    const refreshIcon = document.getElementById('refresh-icon');
+    const toggleMockBtn = document.getElementById('toggle-mock-btn');
+    const mockIndicator = document.getElementById('mock-indicator');
+    const mockText = document.getElementById('mock-text');
+
+    // Combobox DOM Elements
+    const lineTrigger = document.getElementById('line-trigger');
+    const lineTriggerLabel = document.getElementById('line-trigger-label');
+    const lineDropdownMenu = document.getElementById('line-dropdown-menu');
+    const lineSearchInput = document.getElementById('line-search-input');
+    const lineOptionsList = document.getElementById('line-options-list');
+    const lineArrow = document.getElementById('line-arrow');
+
+    const stationTrigger = document.getElementById('station-trigger');
+    const stationTriggerLabel = document.getElementById('station-trigger-label');
+    const stationDropdownMenu = document.getElementById('station-dropdown-menu');
+    const stationSearchInput = document.getElementById('station-search-input');
+    const stationOptionsList = document.getElementById('station-options-list');
+    const stationArrow = document.getElementById('station-arrow');
+
+    /**
+     * INITIALIZATION
+     */
+    window.addEventListener('DOMContentLoaded', () => {
+      buildLinePills();
+      setupSearchableDropdowns();
+      updateLineSelection('TWL', 'CEN');
+      startAutoRefreshTimer();
+
+      // Event listeners
+      manualRefreshBtn.addEventListener('click', () => {
+        resetTimer();
+        fetchData();
+      });
+
+      toggleMockBtn.addEventListener('click', () => {
+        isMockMode = !isMockMode;
+        if (isMockMode) {
+          mockIndicator.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping';
+          mockText.textContent = 'Simulated Data';
+          toggleMockBtn.classList.add('border-amber-500/50', 'bg-amber-950/30');
+        } else {
+          mockIndicator.className = 'w-2 h-2 rounded-full bg-emerald-500';
+          mockText.textContent = 'Live API';
+          toggleMockBtn.classList.remove('border-amber-500/50', 'bg-amber-950/30');
+        }
+        fetchData();
+      });
+    });
+
+    /**
+     * SEARCHABLE COMBOBOX CONTROLS LOGIC
+     */
+    function setupSearchableDropdowns() {
+      // Line trigger toggle
+      lineTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeCombobox(stationDropdownMenu, stationArrow);
+        toggleCombobox(lineDropdownMenu, lineArrow, lineSearchInput);
+      });
+
+      // Station trigger toggle
+      stationTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeCombobox(lineDropdownMenu, lineArrow);
+        toggleCombobox(stationDropdownMenu, stationArrow, stationSearchInput);
+      });
+
+      // Line search input filtering
+      lineSearchInput.addEventListener('input', (e) => {
+        renderLineOptions(e.target.value.trim().toLowerCase());
+      });
+
+      // Station search input filtering
+      stationSearchInput.addEventListener('input', (e) => {
+        renderStationOptions(currentLine, e.target.value.trim().toLowerCase());
+      });
+
+      // Close dropdowns on outside click
+      document.addEventListener('click', (e) => {
+        if (!document.getElementById('line-combobox-wrapper').contains(e.target)) {
+          closeCombobox(lineDropdownMenu, lineArrow);
+        }
+        if (!document.getElementById('station-combobox-wrapper').contains(e.target)) {
+          closeCombobox(stationDropdownMenu, stationArrow);
+        }
+      });
+    }
+
+    function toggleCombobox(menu, arrow, searchInput) {
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        arrow.classList.add('rotate-180');
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.focus();
+          if (menu === lineDropdownMenu) renderLineOptions();
+          if (menu === stationDropdownMenu) renderStationOptions(currentLine);
+        }
+      } else {
+        closeCombobox(menu, arrow);
+      }
+    }
+
+    function closeCombobox(menu, arrow) {
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        arrow.classList.remove('rotate-180');
+      }
+    }
+
+    /**
+     * RENDER LINE DROPDOWN OPTIONS
+     */
+    function renderLineOptions(filterText = '') {
+      lineOptionsList.innerHTML = '';
+      const lines = Object.values(MTR_LINES).filter(line => {
+        if (!filterText) return true;
+        return line.name.toLowerCase().includes(filterText) || line.code.toLowerCase().includes(filterText);
+      });
+
+      if (lines.length === 0) {
+        lineOptionsList.innerHTML = `<li class="p-2 text-xs text-slate-500 text-center">No lines match search</li>`;
+        return;
+      }
+
+      lines.forEach(line => {
+        const isSelected = line.code === currentLine;
+        const li = document.createElement('li');
+        li.className = `px-3 py-2 text-xs rounded-lg cursor-pointer flex items-center justify-between transition ${
+          isSelected ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800/60 text-slate-300'
+        }`;
+        li.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: ${line.color}"></span>
+            <span>${line.name}</span>
+          </div>
+          <span class="text-[10px] font-mono text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">${line.code}</span>
+        `;
+        li.onclick = (e) => {
+          e.stopPropagation();
+          closeCombobox(lineDropdownMenu, lineArrow);
+          const firstSta = line.stations[0].code;
+          updateLineSelection(line.code, firstSta);
+          fetchData();
+        };
+        lineOptionsList.appendChild(li);
+      });
+    }
+
+    /**
+     * RENDER STATION DROPDOWN OPTIONS
+     */
+    function renderStationOptions(lineCode, filterText = '') {
+      stationOptionsList.innerHTML = '';
+      const stations = MTR_LINES[lineCode].stations.filter(sta => {
+        if (!filterText) return true;
+        return sta.name.toLowerCase().includes(filterText) || sta.code.toLowerCase().includes(filterText);
+      });
+
+      if (stations.length === 0) {
+        stationOptionsList.innerHTML = `<li class="p-2 text-xs text-slate-500 text-center">No stations match search</li>`;
+        return;
+      }
+
+      stations.forEach(sta => {
+        const isSelected = sta.code === currentStation;
+        const li = document.createElement('li');
+        li.className = `px-3 py-2 text-xs rounded-lg cursor-pointer flex items-center justify-between transition ${
+          isSelected ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-800/60 text-slate-300'
+        }`;
+        li.innerHTML = `
+          <span class="font-medium">${sta.name}</span>
+          <span class="text-[10px] font-mono text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">${sta.code}</span>
+        `;
+        li.onclick = (e) => {
+          e.stopPropagation();
+          closeCombobox(stationDropdownMenu, stationArrow);
+          currentStation = sta.code;
+          updateStationTriggerUI(sta.code);
+          fetchData();
+        };
+        stationOptionsList.appendChild(li);
+      });
+    }
+
+    function updateLineTriggerUI(lineCode) {
+      const line = MTR_LINES[lineCode];
+      lineTriggerLabel.innerHTML = `
+        <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${line.color}"></span>
+        <span class="font-semibold text-white">${line.name}</span>
+        <span class="text-xs text-slate-400 font-mono">(${line.code})</span>
+      `;
+    }
+
+    function updateStationTriggerUI(staCode) {
+      const name = STATION_NAME_MAP[staCode] || staCode;
+      stationTriggerLabel.innerHTML = `
+        <span class="font-semibold text-white">${name}</span>
+        <span class="text-xs text-slate-400 font-mono ml-1.5">(${staCode})</span>
+      `;
+    }
+
+    /**
+     * BUILD QUICK SELECT PILLS
+     */
+    function buildLinePills() {
+      linePillsContainer.innerHTML = '';
+      Object.keys(MTR_LINES).forEach(key => {
+        const line = MTR_LINES[key];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-800 bg-slate-950/60 hover:bg-slate-800 text-slate-300 transition flex items-center gap-1.5`;
+        btn.innerHTML = `<span class="w-2.5 h-2.5 rounded-full" style="background-color: ${line.color}"></span> ${line.code}`;
+        btn.onclick = () => {
+          const firstSta = line.stations[0].code;
+          updateLineSelection(line.code, firstSta);
+          fetchData();
+        };
+        linePillsContainer.appendChild(btn);
+      });
+    }
+
+    /**
+     * UPDATE UI THEME & LINE SELECTION
+     */
+    function updateLineSelection(lineCode, staCode) {
+      currentLine = lineCode;
+      currentStation = staCode || MTR_LINES[lineCode].stations[0].code;
+
+      updateLineTriggerUI(currentLine);
+      updateStationTriggerUI(currentStation);
+
+      const lineConfig = MTR_LINES[currentLine];
+
+      // Update CSS Variables & Themes
+      document.documentElement.style.setProperty('--line-theme-color', lineConfig.color);
+      themeTopBar.style.backgroundColor = lineConfig.color;
+      ambientGlow.style.backgroundColor = lineConfig.color;
+    }
+
+    /**
+     * AUTO REFRESH TIMER LOGIC (30 SECONDS)
+     */
+    function startAutoRefreshTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      countdownSecs = 30;
+      updateTimerUI();
+
+      timerInterval = setInterval(() => {
+        countdownSecs--;
+        if (countdownSecs <= 0) {
+          fetchData();
+          countdownSecs = 30;
+        }
+        updateTimerUI();
+      }, 1000);
+    }
+
+    function resetTimer() {
+      countdownSecs = 30;
+      updateTimerUI();
+    }
+
+    function updateTimerUI() {
+      timerCounter.textContent = countdownSecs;
+      const percentage = (countdownSecs / 30) * 100;
+      timerProgress.style.width = `${percentage}%`;
+    }
+
+    /**
+     * FETCH NEXT TRAIN DATA FROM OFFICIAL API OR FALLBACK
+     */
+    async function fetchData() {
+      // Spinning refresh animation
+      refreshIcon.classList.add('fa-spin');
+      setStatus('Fetching schedules...', 'loading');
+
+      const line = currentLine;
+      const sta = currentStation;
+
+      if (isMockMode) {
+        setTimeout(() => {
+          const mockRes = generateMockData(line, sta);
+          renderSchedules(mockRes, line, sta);
+          finishFetchSuccess();
+        }, 400);
+        return;
+      }
+
+      const apiUrl = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${line}&sta=${sta}&lang=EN`;
+
+      try {
+        const response = await fetch(apiUrl, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`HTTP Error: ${response.status}`);
+        }
+        const data = await response.json();
+
+        if (data.status === 0) {
+          // Special MTR API status 0: Line delay or special message
+          setStatus(data.message || 'Special Train Arrangements / Service Disrupted', 'error');
+          renderErrorMessage(data.message || 'System message: Service delay or special operations currently in effect.');
+        } else {
+          renderSchedules(data, line, sta);
+          finishFetchSuccess();
+        }
+      } catch (err) {
+        console.warn('Network or API Error. Switching to fallback view:', err);
+        setStatus('API Unavailable (Showing Mock Data)', 'warning');
+        // Render fallback data gracefully so app remains fully functional
+        const mockRes = generateMockData(line, sta);
+        renderSchedules(mockRes, line, sta);
+      } finally {
+        refreshIcon.classList.remove('fa-spin');
+      }
+    }
+
+    function finishFetchSuccess() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      lastUpdatedText.textContent = `Last updated: ${timeStr}`;
+      if (!isMockMode) setStatus('Live Connected', 'success');
+    }
+
+    function setStatus(message, state) {
+      statusText.textContent = message;
+      if (state === 'success') {
+        statusBadge.className = 'flex items-center space-x-2 bg-emerald-950/60 border border-emerald-800/60 text-emerald-400 px-2.5 py-1 rounded-full';
+      } else if (state === 'loading') {
+        statusBadge.className = 'flex items-center space-x-2 bg-blue-950/60 border border-blue-800/60 text-blue-400 px-2.5 py-1 rounded-full';
+      } else if (state === 'warning') {
+        statusBadge.className = 'flex items-center space-x-2 bg-amber-950/60 border border-amber-800/60 text-amber-400 px-2.5 py-1 rounded-full';
+      } else {
+        statusBadge.className = 'flex items-center space-x-2 bg-rose-950/60 border border-rose-800/60 text-rose-400 px-2.5 py-1 rounded-full';
+      }
+    }
+
+    /**
+     * RENDER SCHEDULES (UP & DOWN DIRECTIONS)
+     */
+    function renderSchedules(data, lineCode, staCode) {
+      departureContainer.innerHTML = '';
+
+      const lineConfig = MTR_LINES[lineCode];
+      const stationData = data.data?.[`${lineCode}-${staCode}`];
+
+      // If station has no train data
+      if (!stationData) {
+        departureContainer.innerHTML = `
+          <div class="col-span-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400">
+            <i class="fa-solid fa-circle-exclamation text-3xl text-slate-500 mb-3"></i>
+            <h3 class="text-base font-bold text-white mb-1">No Train Schedule Available</h3>
+            <p class="text-xs">There are currently no active train schedules reported for ${STATION_NAME_MAP[staCode] || staCode} on the ${lineConfig.name}.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Check directions UP and DOWN
+      const directions = [
+        { key: 'UP', label: 'UP Direction', icon: 'fa-arrow-up' },
+        { key: 'DOWN', label: 'DOWN Direction', icon: 'fa-arrow-down' }
+      ];
+
+      let renderedAny = false;
+
+      directions.forEach(dir => {
+        const trainList = stationData[dir.key];
+        if (!trainList || trainList.length === 0) return;
+
+        renderedAny = true;
+        // Take next 3 trains maximum
+        const nextTrains = trainList.slice(0, 3);
+        const destinationCode = nextTrains[0]?.dest;
+        const destinationName = STATION_NAME_MAP[destinationCode] || destinationCode || 'Terminal Station';
+
+        const card = document.createElement('div');
+        card.className = `bg-slate-900 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl flex flex-col`;
+
+        // Card Header
+        card.innerHTML = `
+          <div class="px-5 py-4 border-b border-slate-800/80 bg-slate-950/40 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <span class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm text-white" style="background-color: ${lineConfig.color}">
+                <i class="fa-solid ${dir.icon}"></i>
+              </span>
+              <div>
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Towards</span>
+                <h3 class="text-lg font-bold text-white tracking-tight leading-tight">${destinationName}</h3>
+              </div>
+            </div>
+            <span class="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+              ${dir.key}
+            </span>
+          </div>
+
+          <!-- Train List -->
+          <div class="p-5 flex-1 flex flex-col gap-3">
+            ${nextTrains.map((train, idx) => renderTrainRow(train, idx, lineConfig)).join('')}
+          </div>
+        `;
+
+        departureContainer.appendChild(card);
+      });
+
+      if (!renderedAny) {
+        departureContainer.innerHTML = `
+          <div class="col-span-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400">
+            <i class="fa-solid fa-moon text-3xl text-slate-500 mb-3"></i>
+            <h3 class="text-base font-bold text-white mb-1">Service Non-Operational</h3>
+            <p class="text-xs">Trains are not currently operating in either direction for this station (Non-service hours or terminus).</p>
+          </div>
+        `;
+      }
+    }
+
+    /**
+     * RENDER INDIVIDUAL TRAIN ROW
+     */
+    function renderTrainRow(train, index, lineConfig) {
+      const isFirst = index === 0;
+      const destName = STATION_NAME_MAP[train.dest] || train.dest || 'Terminus';
+      const ttnt = parseInt(train.ttnt, 10);
+      const seq = train.seq || (index + 1);
+      const plat = train.plat || '1';
+      
+      // Calculate display time text
+      let timeBadgeStr = '';
+      let isArriving = false;
+
+      if (isNaN(ttnt) || ttnt <= 0 || train.ttnt === '0' || train.ttnt === '1') {
+        timeBadgeStr = 'Arriving';
+        isArriving = true;
+      } else {
+        timeBadgeStr = `${ttnt} min${ttnt > 1 ? 's' : ''}`;
+      }
+
+      // Format departure time string (e.g. 14:32:10)
+      let departureTimeFormatted = '--:--';
+      if (train.time) {
+        const parts = train.time.split(' ');
+        if (parts.length > 1) {
+          departureTimeFormatted = parts[1].substring(0, 5); // HH:MM
+        } else {
+          departureTimeFormatted = train.time.substring(11, 16);
+        }
+      }
+
+      return `
+        <div class="flex items-center justify-between p-3.5 rounded-xl border ${isFirst ? 'bg-slate-800/60 border-slate-700/80 ' + (isArriving ? 'arriving-pulse' : '') : 'bg-slate-950/40 border-slate-800/60'} transition">
+          <div class="flex items-center space-x-3.5">
+            <!-- Train Sequence Badge -->
+            <div class="w-7 h-7 rounded-full ${isFirst ? 'bg-slate-700 text-white font-bold' : 'bg-slate-900 text-slate-400'} flex items-center justify-center text-xs">
+              #${seq}
+            </div>
+
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-white">${destName}</span>
+                <span class="text-xs px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700/60">Platform ${plat}</span>
+              </div>
+              <div class="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                <i class="fa-regular fa-clock text-slate-400 text-[10px]"></i>
+                <span>Est. ${departureTimeFormatted}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Countdown / Status Badge -->
+          <div class="text-right">
+            ${isArriving ? `
+              <span class="px-3 py-1.5 rounded-lg text-xs font-extrabold bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span> Arriving
+              </span>
+            ` : `
+              <span class="px-3 py-1.5 rounded-lg text-sm font-bold bg-slate-950 border border-slate-800 text-white inline-block shadow-inner" style="color: ${isFirst ? lineConfig.color : '#f8fafc'}">
+                ${timeBadgeStr}
+              </span>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    /**
+     * RENDER ERROR MESSAGE IN CONTAINER
+     */
+    function renderErrorMessage(msg) {
+      departureContainer.innerHTML = `
+        <div class="col-span-full bg-slate-900 border border-rose-900/50 rounded-2xl p-8 text-center text-slate-300">
+          <i class="fa-solid fa-triangle-exclamation text-4xl text-rose-500 mb-3"></i>
+          <h3 class="text-lg font-bold text-white mb-2">Service Announcement</h3>
+          <p class="text-sm text-slate-400 max-w-md mx-auto mb-4">${msg}</p>
+          <button onclick="fetchData()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white border border-slate-700 transition">
+            Try Refreshing
+          </button>
+        </div>
+      `;
+    }
+
+    /**
+     * MOCK DATA GENERATOR (Provides Realistic Fallback If Network/CORS Interrupted)
+     */
+    function generateMockData(lineCode, staCode) {
+      const lineStations = MTR_LINES[lineCode].stations;
+      const curIndex = lineStations.findIndex(s => s.code === staCode);
+      
+      const res = {
+        status: 1,
+        message: "OK",
+        sys_time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        data: {}
+      };
+
+      const key = `${lineCode}-${staCode}`;
+      res.data[key] = {};
+
+      const now = new Date();
+
+      // UP Direction (towards end of station list)
+      if (curIndex < lineStations.length - 1) {
+        const destCode = lineStations[lineStations.length - 1].code;
+        res.data[key]['UP'] = [
+          {
+            ttnt: '2',
+            valid: 'Y',
+            plat: '1',
+            time: formatDate(new Date(now.getTime() + 2 * 60000)),
+            source: '- -',
+            dest: destCode,
+            seq: '1'
+          },
+          {
+            ttnt: '6',
+            valid: 'Y',
+            plat: '1',
+            time: formatDate(new Date(now.getTime() + 6 * 60000)),
+            source: '- -',
+            dest: destCode,
+            seq: '2'
+          },
+          {
+            ttnt: '11',
+            valid: 'Y',
+            plat: '1',
+            time: formatDate(new Date(now.getTime() + 11 * 60000)),
+            source: '- -',
+            dest: destCode,
+            seq: '3'
+          }
+        ];
+      }
+
+      // DOWN Direction (towards start of station list)
+      if (curIndex > 0) {
+        const destCode = lineStations[0].code;
+        res.data[key]['DOWN'] = [
+          {
+            ttnt: '1',
+            valid: 'Y',
+            plat: '2',
+            time: formatDate(new Date(now.getTime() + 1 * 60000)),
+            source: '- -',
+            dest: destCode,
+            seq: '1'
+          },
+          {
+            ttnt: '5',
+            valid: 'Y',
+            plat: '2',
+            time: formatDate(new Date(now.getTime() + 5 * 60000)),
+            source: '- -',
+            dest: destCode,
+            seq: '2'
+          },
+          {
+            ttnt: '9',
+            valid: 'Y',
+            plat: '2',
+            time: formatDate(new Date(now.getTime() + 9 * 60000)),
+            source: '- -',
+            dest: destCode,
+            seq: '3'
+          }
+        ];
+      }
+
+      return res;
+    }
+
+    function formatDate(d) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      const secs = String(d.getSeconds()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+    }
+  </script>
+</body>
+</html>
